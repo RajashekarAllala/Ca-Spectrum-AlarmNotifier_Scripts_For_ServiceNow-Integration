@@ -1,0 +1,308 @@
+#!/bin/sh
+#
+#
+#  CA Technologies, Inc.
+#  One CA Plaza
+#  Islandia, NY 11749 USA
+#
+#  Copyright (c) 2014 CA Technologies, Inc.
+#  All rights reserved.
+#
+#  IN NO EVENT SHALL CA TECHNOLOGIES INCORPORATED BE LIABLE FOR
+#  ANY INCIDENTAL, INDIRECT, SPECIAL, OR CONSEQUENTIAL DAMAGES
+#  WHATSOEVER (INCLUDING BUT NOT LIMITED TO LOST PROFITS) ARISING OUT
+#  OF OR RELATED TO THIS SOFTWARE, EVEN IF CA TECHNOLOGIES INCORPORATED
+#  HAS BEEN ADVISED OF, KNOWN, OR SHOULD HAVE KNOWN, THE POSSIBILITY OF
+#  SUCH DAMAGES.
+#
+#
+
+###############################################################################
+#
+#  ClearScript - default script executed by AlarmNotifier for alarm clear.
+#
+###############################################################################
+###############################################################################
+#
+#  MAIL Facility
+#
+#  If a user wishes to send a mail message for the alarm then set SENDMAIL to
+#  "True" and set VARFORMAIL to "RepairPerson" or "NotificationData" (or 
+#  "Both") depending on who you want the mail sent to.
+#
+#  Note: You can only send mail to users listed in $NOTIFDATA if the
+#  SPECTRUM Alarm Notification Manager (SANM) is enabled. If VARFORMAIL is
+#  set to "NotificationData" and SANM is not enabled then mail is not sent.
+#
+#  Note: The argument $REPAIRPERSON( actually $TROUBLE_SHOOTER_EMAIL ) and/or
+#        $NOTIFDATA MUST be valid Login IDS and email addresses respectively 
+#        in order for the script to send mail them.
+#
+#  Note: Ensure Mail is configured as described in the AlarmNotifier User
+#  Guide if you are running AlarmNotifier on Windows with mail enabled.
+#
+##############################################################################
+SENDMAIL=True              #True or False
+VARFORMAIL=NotificationData     #RepairPerson, NotificationData, or Both
+
+case `/bin/uname` in
+        "Windows_NT") MAIL="mail";;
+
+        "Linux") MAIL="mail";;
+
+        "SunOS") MAIL="mailx";;
+esac
+
+DATE=$1
+TIME=$2
+MTYPE=$3
+
+# use quotes to avoid mis-interpreting special chars - like '
+# If model name isn't correct when passed as an arg, you can also
+# try using $SANM_MODEL_NAME to avoid issues with shell escape
+# characters.
+# This has been see on Windows where C:\ is changed to C:\\
+MNAME="$4"
+
+AID=$5
+SEV=$6
+CAUSE=$7
+REPAIRPERSON="$8"
+
+if [ "$USE_NEW_INTERFACE" = "TRUE" ]
+then
+    # ALARMSTATUS now being passed via environment variable
+    shift 8
+else
+    STATUS=$9
+    shift 9
+fi
+
+SERVER=$1
+LANDSCAPE=$2
+MHANDLE=$3
+MTHANDLE=$4
+IPADDRESS=$5
+SECSTR=$6
+ALARMSTATE=$7
+ACKD=$8
+CLEARABLE=$9
+
+shift 9
+
+FLASH_GREEN=$1
+
+if [ "$USE_NEW_INTERFACE" = "TRUE" ]
+then
+    # PCAUSE and EVENTMSG now passed via environment variables
+    LOCATION="$2"
+    AGE=$3
+    NOTIFDATA=$4
+    PID=$5
+    SANM=$6
+    shift 6
+else
+    PCAUSE=`echo "$2" | tr '\350' '\012' | tr '\351' '"'`
+    LOCATION="$3"
+    AGE=$4
+    NOTIFDATA=$5
+    EVENTMSG=`echo "$6" | tr '\350' '\012' | tr '\351' '"'`
+    PID=$7
+    SANM=$8
+    shift 8
+fi
+
+
+# Information on specifying additional attributes, which requires
+# USE_NEW_INTERFACE=true :
+
+# Two ways have been added that allows the specification of additional 
+# attributes for AlarmNotifier.  You have the option of passing the 
+# attributes as environment variables or as arguments, which is reflected
+# in the two new config parameters:
+#
+# EXTRA_ATTRS_AS_ENVVARS and EXTRA_ATTRS_AS_ARGS
+#
+# For most attributes, either method is acceptable, but for multi-line text
+# attributes or for very long attribute values it is recommended to specify
+# these as EXTRA_ATTRS_AS_ENVVARS because of command-line length limitations
+# and Windows behavior that truncates the command-line at the first newline
+# character.
+#
+# If EXTRA_ATTRS_AS_ENVVARS have been specified, they can be just referenced
+# by prepending $SANM_ to the value in the config file, ie:
+#
+#  EXTRA_ATTRS_AS_ENVVARS=0x100c5,0x11f84  means that
+#
+#  $SANM_0x100c5 and $SANM_0x11f84 environment variables to be set, which
+#  can be then be referenced in this script like:
+#
+# IFDESC=$SANM_0x100c5 
+# IFALIAS=$SANM_0x11f84
+#
+#  Note: Windows will uppercase these variables, so they need to be referenced
+#        that way - ie. $SANM_0X100C5 and $SANM_0X11F84.
+#
+# Alternatively, if EXTRA_ATTRS_AS_ARGS have been specified, they will be
+# added to the command-line.  For example:
+#
+#  EXTRA_ATTRS_AS_ARGS=0x100c5,0x11f84   means that
+#
+#  the values of these attributes will be added to be argument list passed
+# to this script, and can be referenced like this:
+#
+# IFDESC=$1
+# IFALIAS=$2
+
+DTYPE="$1"
+
+echo_info()
+{
+    echo ""
+    echo "============================================================"
+    echo " "
+    echo "Alarm Notification from SPECTRUM"
+    echo " "
+    if [ -n "$CLEARED_BY_USER_NAME" ] ; then
+      echo "Alarm CLEARed by : " $CLEARED_BY_USER_NAME
+    else
+      echo "Alarm CLEARed : "
+    fi
+    echo ""
+    echo "Date:            " $DATE
+    echo "Time:            " $TIME
+    #echo "DeviceType:      " $DTYPE
+    #echo "Mtype:           " $MTYPE
+    echo "ModelName:       " $MNAME
+    #echo "New Condition:   " $MODEL_CONDITION "("$MODEL_CONDITION_STRING")"
+    #echo "AlarmID:         " $AID
+
+    # If you wish to see the global alarm ID printed out you need to set
+    # ENABLE_CORRELATION to "true" and USE_NEW_INTERFACE to "true" in the
+    # configuration file.
+    if [ "$ENABLE_CORRELATION" = "TRUE" ] && [ "$USE_NEW_INTERFACE" = "TRUE" ]
+    then
+       echo "" 
+       #echo "Global AlarmID:  " $GLOBAL_ALARM_ID
+    fi
+
+    # If you wish to see correlation related information, you need to set
+    # ENABLE_CORRELATION to "true" and SHOW_SYMPTOM_ALARMS to "true" in
+    # the configuration file.
+    if [ "$SYMPTOM_ALARM_LIST" ]
+    then
+        echo ""
+        #echo "CorrelationAlarmType:       " CAUSE
+        #echo "SYMPTOMGlobalAlarmIDList:   " $SYMPTOM_ALARM_LIST
+    fi
+
+    if [ "$CAUSE_ALARM_LIST" ]
+    then
+        echo ""
+        #echo "CorrelationAlarmType:       " SYMPTOM
+        #echo "CAUSEGlobalAlarmIDList:     " $CAUSE_ALARM_LIST
+    fi
+
+    # If you wish to see the UNIX alarm time printed out you need to set
+    # USE_NEW_INTERFACE to true in the configuration file and uncomment
+    # the following line.
+    #echo "Raw Alarm Time: "  $RAW_ALARM_TIME
+
+    echo "Severity:        " $SEV
+    #echo "ProbableCauseID: " $CAUSE
+    #echo "RepairPerson:    " $REPAIRPERSON
+    #echo "AlarmStatus:     " $STATUS
+    #echo "SpectroSERVER:   " $SERVER
+    #echo "Landscape:       " $LANDSCAPE
+    #echo "ModelHandle:     " $MHANDLE
+    #echo "ModelTypeHandle: " $MTHANDLE
+    #echo "IPAddress:       " $IPADDRESS
+    #echo "SecurityString:  " $SECSTR
+    #echo "AlarmState:      " $ALARMSTATE
+    #echo "Acknowledged:    " $ACKD
+    #echo "UserClearable:   " $CLEARABLE
+
+    # This variable has substituted placeholder chars, echo them inside quotes
+    #echo "ProbableCause:    $PCAUSE"
+    echo ""                                         # insert blank line
+    # This variable has substituted placeholder chars, echo them inside quotes
+    #echo "EventMessage:     $EVENTMSG"
+    echo ""
+
+    ###########################################################################
+    #  The following parameters contain values only when
+    #  the SPECTRUM Alarm Notification Manager is enabled.
+    ###########################################################################
+    if [ "$SANM" ]
+    then
+        #echo "FlashGreen:      " $FLASH_GREEN
+        #echo "Location:        " $LOCATION
+        #echo "AlarmAge:        " $AGE
+        echo "NotificationData:" $NOTIFDATA
+        echo ""
+    fi
+    echo "============================================================"
+}
+
+parse_notifdata()
+{
+   LIST=`echo "$NOTIFDATA" | tr ',:' '  '`
+   SKIP=false
+   for ITEM in $LIST
+   do
+      if [ "$ITEM" = "or" ]
+      then
+         SKIP=true
+      else
+         if [ "$SKIP" = "false" ]
+         then
+            OUTLIST="$OUTLIST $ITEM"
+         else
+            SKIP=false
+         fi
+      fi
+   done
+   echo $OUTLIST
+}
+
+if [ "$SENDMAIL" = "True" ]
+then
+   RECIPIENTS=$VARFORMAIL
+   if [ "$VARFORMAIL" = "NotificationData" ]
+   then
+      RCVRS=`parse_notifdata`
+   fi
+   if [ "$VARFORMAIL" = "RepairPerson" ]
+   then
+      RCVRS="$TROUBLE_SHOOTER_EMAIL"
+   fi
+   if [ "$VARFORMAIL" = "Both" ]
+   then
+      RCVRS=`parse_notifdata`
+      RCVRS="$RCVRS $TROUBLE_SHOOTER_EMAIL"
+      RECIPIENTS="NotificationData/RepairPerson"
+   fi
+
+   if [ "$RCVRS" ]
+   then
+      echo " "
+      #echo "******************************************************************"
+      #echo "Sending mail to $RECIPIENTS:"
+      echo ""
+      #echo "($RCVRS)"
+      echo "******************************************************************"
+      echo_info | tee -i /tmp/cleared_alarm.$PID
+      ALARMTITLE=`echo "$PCAUSE" | /usr/bin/head -1`
+      $MAIL -s "A $ALARMTITLE alarm has been cleared on $MNAME" $RCVRS < /tmp/cleared_alarm.$PID
+      rm -f /tmp/cleared_alarm.$PID
+   else
+      echo " "
+      echo "*****************************************************"
+      #echo "$RECIPIENTS undefined - no mail sent"
+      echo "*****************************************************"
+      echo_info
+   fi
+
+else
+   echo_info
+fi
