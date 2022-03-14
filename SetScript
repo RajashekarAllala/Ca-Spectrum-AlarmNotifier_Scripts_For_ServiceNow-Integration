@@ -261,3 +261,7 @@ curl "https://instance.service-now.com/api/now/table/incident" \
 --header "Content-Type:application/json" \
 --data "{'short_description':'[$MNAME] - $ALARMTITLE','description':'Date: $DATE \n Time: $TIME \n Model Name: $MNAME \n Alarm ID: $AID \n Severity: $SEV \n Cause: $CAUSE \n Status: $STATUS \n Alarm State: $ALARMSTATE \n Probable Cause: $PCAUSE \n Event Message: $EVENTMSG'}" \
 --user 'admin':'Snow@123$'
+
+#Another Method
+#json='{​​​​​​​​"u_urgency":"'"$SEV"'","u_assignment_group":"'"$grp"'","u_short_description":"'"$atitle"'","u_description":"'"$msgtst"'","u_configuration_item":"'"$MNAME"'"}​​​​​​​​​​​​​​​' 
+#curl -u uname:PWD -X POST -d "$json" https://service-now.com/api/now/table/u_spectrum_alarms -H "Content-Type:application/json"
